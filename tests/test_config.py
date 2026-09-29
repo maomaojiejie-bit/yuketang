@@ -15,7 +15,7 @@ def test_defaults_without_config_file(tmp_dir: Path) -> None:
     assert config.config_path is None
     assert config.site == "changjiang"
     assert config.answer.mode == "manual"
-    assert config.deepseek.model == "deepseek-chat"
+    assert config.deepseek.model == "deepseek-flash"
     assert config.user_data_path == tmp_dir / ".chrome-profile"
     # 监听时用的窗口尺寸，默认 800x600
     assert config.browser.window_width == 800

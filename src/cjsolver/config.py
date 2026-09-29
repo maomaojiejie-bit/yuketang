@@ -48,7 +48,7 @@ class DeepSeekConfig:
     provider: str = "deepseek"
     api_key: str = ""
     base_url: str = "https://api.deepseek.com"
-    model: str = "deepseek-chat"
+    model: str = "deepseek-flash"
     temperature: float = 0.0
     timeout: int = 90
     max_tokens: int = 1200

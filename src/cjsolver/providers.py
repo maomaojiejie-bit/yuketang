@@ -55,9 +55,13 @@ PRESETS: tuple[Provider, ...] = (
         label="DeepSeek 深度求索",
         base_url="https://api.deepseek.com",
         key_env="DEEPSEEK_API_KEY",
-        models=("deepseek-chat", "deepseek-reasoner"),
-        docs="https://platform.deepseek.com/api-docs/",
-        note="deepseek-chat 稳定快速；deepseek-reasoner 会先推理再作答，适合难题但更慢。",
+        models=("deepseek-flash", "deepseek-v4-pro"),
+        docs="https://api-docs.deepseek.com/quick_start/pricing",
+        note=(
+            "deepseek-flash（V4.1-Flash）快且便宜，支持看图，日常够用；"
+            "deepseek-v4-pro 更强但贵，不支持图片。"
+            "旧的 deepseek-chat / deepseek-reasoner 已停用，上游按 Flash 计费。"
+        ),
     ),
     Provider(
         id="qwen",

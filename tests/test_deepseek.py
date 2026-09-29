@@ -56,14 +56,14 @@ def test_successful_call_and_request_shape() -> None:
 
     assert suggestion.letters == ["B"]
     assert suggestion.confidence == 0.95
-    assert suggestion.model == "deepseek-chat"
+    assert suggestion.model == "deepseek-flash"
 
     assert len(seen) == 1
     request = seen[0]
     assert str(request.url) == "https://api.deepseek.com/chat/completions"
     assert request.headers["authorization"] == "Bearer sk-test"
     body = json.loads(request.content)
-    assert body["model"] == "deepseek-chat"
+    assert body["model"] == "deepseek-flash"
     assert body["response_format"] == {"type": "json_object"}
     assert body["stream"] is False
     assert body["messages"][0]["role"] == "system"
@@ -216,7 +216,7 @@ def test_vision_disabled_ignores_images() -> None:
             await client.ask(make_problem(), images=["https://example.com/slide.png"])
 
     run(scenario())
-    assert bodies[0]["model"] == "deepseek-chat"
+    assert bodies[0]["model"] == "deepseek-flash"
     assert isinstance(bodies[0]["messages"][1]["content"], str)
 
 
@@ -242,7 +242,7 @@ def test_list_models() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path.endswith("/models")
         return httpx.Response(
-            200, json={"data": [{"id": "deepseek-reasoner"}, {"id": "deepseek-chat"}, {"x": 1}]}
+            200, json={"data": [{"id": "deepseek-v4-pro"}, {"id": "deepseek-flash"}, {"x": 1}]}
         )
 
     async def scenario() -> list[str]:
@@ -250,4 +250,4 @@ def test_list_models() -> None:
         async with DeepSeekClient(config(), transport=transport) as client:
             return await client.list_models()
 
-    assert run(scenario()) == ["deepseek-chat", "deepseek-reasoner"]
+    assert run(scenario()) == ["deepseek-flash", "deepseek-v4-pro"]

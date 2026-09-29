@@ -1,0 +1,63 @@
+{
+  "code": 0,
+  "msg": "success",
+  "data": {
+    "id": "presentation-987654",
+    "title": "第 3 章 进程与线程",
+    "width": 1280,
+    "height": 720,
+    "slides": [
+      {
+        "id": "slide-1",
+        "index": 0,
+        "title": "封面",
+        "imageUrl": "https://changjiang.yuketang.cn/slide/cover.png",
+        "problem": null
+      },
+      {
+        "id": "slide-2",
+        "index": 1,
+        "title": "随堂练习",
+        "imageUrl": "https://changjiang.yuketang.cn/slide/q1.png",
+        "problem": {
+          "problemId": 1234567,
+          "problemType": 1,
+          "prompt": "下列关于进程与线程的说法，正确的是？",
+          "options": [
+            { "content": "进程是资源分配的基本单位" },
+            { "content": "线程是资源分配的基本单位" },
+            { "content": "同一进程内的线程不共享地址空间" },
+            { "content": "线程的创建开销大于进程" }
+          ],
+          "blanks": [],
+          "result": null
+        }
+      },
+      {
+        "id": "slide-3",
+        "index": 2,
+        "title": "随堂练习",
+        "imageUrl": "https://changjiang.yuketang.cn/slide/q2.png",
+        "problem": {
+          "problemId": "7654321",
+          "problemType": 2,
+          "content": "以下属于进程调度算法的有？",
+          "answers": ["先来先服务", "短作业优先", "时间片轮转", "银行家算法"],
+          "result": ["A", "B", "C"]
+        }
+      },
+      {
+        "id": "slide-4",
+        "index": 3,
+        "imageUrl": "https://changjiang.yuketang.cn/slide/q3.png",
+        "problem": {
+          "problemId": 1112223,
+          "problemType": 4,
+          "prompt": "在页式存储管理中，把逻辑地址映射为物理地址的部件是____。",
+          "blanks": ["页表"],
+          "result": null
+        }
+      }
+    ]
+  }
+}

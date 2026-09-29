@@ -1,0 +1,1309 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>长江雨课堂 · 本地控制台</title>
+<style>
+  :root {
+    --bg: #0b1020;
+    --panel: #141b2f;
+    --panel-2: #1b2439;
+    --border: #26314d;
+    --text: #e6ebf5;
+    --muted: #8b98b4;
+    --accent: #22d3ee;
+    --ok: #34d399;
+    --warn: #fbbf24;
+    --err: #f87171;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: transparent; color: var(--text);
+    font: 14px/1.65 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  }
+  /* 自定义背景：最底层放背景，上面压一层可调浓淡的遮罩，保证文字始终看得清 */
+  #bg-layer {
+    position: fixed; inset: 0; z-index: -2; background-color: var(--bg);
+    background-repeat: no-repeat; background-position: center center; background-size: cover;
+    transition: background-color .2s ease;
+  }
+  #bg-veil {
+    position: fixed; inset: 0; z-index: -1; background: #04070f;
+    opacity: 0; pointer-events: none; transition: opacity .2s ease;
+  }
+  /* 开了自定义背景后，顶栏与卡片半透明，图片才透得出来 */
+  html.custom-bg header {
+    background: linear-gradient(180deg, rgba(19,27,48,.86), rgba(14,20,36,.82));
+    backdrop-filter: blur(8px);
+  }
+  html.custom-bg .card { background: rgba(20, 27, 47, .86); }
+  header {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 14px 22px; border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, #131b30, #0e1424);
+    position: sticky; top: 0; z-index: 20;
+  }
+  h1 { font-size: 16px; margin: 0; letter-spacing: .01em; }
+  h1 span { color: var(--accent); }
+  .pills { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 11px; border-radius: 999px; font-size: 12px;
+    border: 1px solid var(--border); background: var(--panel); color: var(--muted);
+    white-space: nowrap;
+  }
+  .pill b { color: var(--text); font-weight: 600; }
+  .pill-btn { flex: 0 0 auto; padding: 4px 11px; border-radius: 999px; font-size: 12px; }
+  .pill-btn.active { border-color: var(--accent); color: var(--text); }
+
+  /* 顶栏里弹出的统一设置浮层 */
+  #settings-panel {
+    position: absolute; top: calc(100% + 8px); right: 22px; z-index: 30;
+    width: min(400px, calc(100vw - 44px)); max-height: calc(100vh - 120px);
+    overflow: auto; box-shadow: 0 18px 40px rgba(0, 0, 0, .45);
+  }
+  #settings-panel[hidden] { display: none; }
+  #settings-panel h3 {
+    margin: 0; padding: 12px 15px 0; font-size: 11px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--accent); font-weight: 600;
+  }
+  #settings-panel h3 ~ h3 { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 14px; }
+  .switch {
+    display: flex; align-items: center; gap: 9px; cursor: pointer;
+    font-size: 12.5px; color: var(--text);
+  }
+  .switch input { width: auto; flex: 0 0 auto; }
+  .inline-num { display: flex; align-items: center; gap: 8px; }
+  .inline-num input { flex: 1 1 auto; min-width: 0; }
+  .inline-num small { color: var(--muted); font-size: 11px; white-space: nowrap; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+  .dot.ok { background: var(--ok); box-shadow: 0 0 0 3px rgba(52,211,153,.16); }
+  .dot.off { background: #4b5673; }
+  .dot.warn { background: var(--warn); }
+
+  main { display: grid; grid-template-columns: 380px 1fr; gap: 0; align-items: start; }
+  @media (max-width: 980px) { main { grid-template-columns: 1fr; } }
+  aside { padding: 18px; border-right: 1px solid var(--border); display: grid; gap: 16px; }
+  section.stream { padding: 18px; min-height: 60vh; }
+
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
+  .card > h2 {
+    margin: 0; padding: 11px 15px; font-size: 13px; letter-spacing: .04em;
+    text-transform: uppercase; color: var(--muted);
+    border-bottom: 1px solid var(--border); font-weight: 600;
+  }
+  .card > .body { padding: 15px; display: grid; gap: 12px; }
+
+  .field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); }
+  .field .value { color: var(--text); font-family: ui-monospace, Consolas, monospace; }
+  input[type=color] {
+    width: 100%; height: 36px; padding: 3px; cursor: pointer;
+    border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2);
+  }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  input[type=file] { width: 100%; font-size: 12px; color: var(--muted); }
+  select, input[type=text], textarea {
+    width: 100%; padding: 9px 11px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--panel-2);
+    color: var(--text); font: inherit; font-size: 13px;
+  }
+  textarea { resize: vertical; min-height: 84px; font-family: ui-monospace, Consolas, monospace; }
+  select:focus, input:focus, textarea:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+
+  .row { display: flex; gap: 9px; flex-wrap: wrap; }
+  button {
+    flex: 1 1 auto; padding: 10px 14px; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
+    font: inherit; font-size: 13px; font-weight: 500; transition: .13s;
+    min-width: 0;
+  }
+  button:hover:not(:disabled) { border-color: var(--accent); color: #fff; background: #22304d; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.primary { background: #0e7490; border-color: #0e7490; color: #fff; }
+  button.primary:hover:not(:disabled) { background: #0891b2; border-color: #0891b2; }
+  button.danger { background: #7f1d1d; border-color: #7f1d1d; color: #fff; }
+  button.danger:hover:not(:disabled) { background: #991b1b; border-color: #991b1b; }
+  button.ghost { background: transparent; }
+
+  .check { display: flex; gap: 9px; align-items: flex-start; font-size: 12.5px; padding: 7px 0; border-bottom: 1px dashed #202a42; }
+  .check:last-child { border-bottom: 0; }
+  .check .mark { flex: 0 0 18px; font-weight: 700; text-align: center; }
+  .check .mark.ok { color: var(--ok); }
+  .check .mark.no { color: var(--err); }
+  .check .mark.skip { color: var(--muted); }
+  .check .txt b { display: block; font-weight: 500; color: var(--text); }
+  .check .txt small { color: var(--muted); }
+
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .stat { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 9px; text-align: center; }
+  .stat b { display: block; font-size: 19px; color: var(--accent); font-weight: 600; }
+  .stat small { color: var(--muted); font-size: 11px; }
+
+  .ev { border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 12px; overflow: hidden; background: var(--panel); }
+  .ev > .hd { padding: 9px 14px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--border); display: flex; gap: 10px; align-items: center; }
+  .ev > .bd { padding: 14px; }
+  .ev.problem > .hd { border-left: 3px solid var(--accent); }
+  .ev.answer > .hd { border-left: 3px solid var(--ok); }
+  .ev.answer.fail > .hd { border-left: 3px solid var(--warn); }
+  .ev.error > .hd { border-left: 3px solid var(--err); }
+  .ev.sim > .hd { border-left: 3px solid #a78bfa; }
+  .tag { padding: 1px 8px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--border); font-size: 11px; }
+  .stem { font-size: 14.5px; margin-bottom: 11px; white-space: pre-wrap; }
+  .opt { padding: 5px 9px; border-radius: 6px; margin: 3px 0; color: #cbd5e1; }
+  .opt.hit { background: rgba(52,211,153,.13); color: #d1fae5; border: 1px solid rgba(52,211,153,.35); }
+  .opt i { color: var(--accent); font-style: normal; font-weight: 600; margin-right: 5px; }
+  .answer-line { font-size: 17px; font-weight: 600; color: var(--ok); margin-bottom: 9px; }
+  .meta { display: flex; gap: 14px; flex-wrap: wrap; color: var(--muted); font-size: 12px; margin-top: 10px; }
+  .explain { margin-top: 10px; padding: 10px 12px; background: var(--panel-2); border-radius: 8px; color: #c7d2e5; font-size: 13px; white-space: pre-wrap; }
+  /* 心跳卡片里的指标格 */
+  .hb-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px; }
+  .hb-item { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+  .hb-item b { display: block; font-size: 17px; color: var(--accent); font-weight: 600; }
+  .hb-item small { color: var(--muted); font-size: 11px; }
+  .hb-page { margin-top: 10px; font-size: 12px; color: var(--muted); word-break: break-all; }
+  .hb-page .t { color: var(--text); }
+
+  /* 带边框的日志块 */
+  .log {
+    border: 1px solid var(--border);
+    border-left: 3px solid #46527a;
+    border-radius: 8px;
+    background: var(--panel-2);
+    padding: 7px 12px;
+    font-family: ui-monospace, Consolas, "Cascadia Mono", monospace;
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: var(--muted);
+    white-space: pre-wrap;
+    word-break: break-word;
+    display: flex; gap: 9px; align-items: flex-start;
+  }
+  .log .ts { color: #55617f; flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+  .log .msg { min-width: 0; }
+  .log.info { border-left-color: var(--accent); }
+  .log.warn { border-left-color: var(--warn); color: #fde68a; }
+  .log.error { border-left-color: var(--err); color: #fecaca; }
+  .log.sim { border-left-color: #a78bfa; }
+  .log.thinking { border-left-color: #64748b; font-style: italic; }
+  .log.skip { border-left-color: #475569; }
+
+  /* 事件流自成滚动容器：新事件自动滚到底，向上滚动会暂停。
+     注意：这里**不能**写 scroll-behavior: smooth —— 那会让
+     scrollTo({behavior:'auto'}) 也走平滑动画，连续 append 时永远追不到底部。 */
+  #stream {
+    display: grid; gap: 12px; padding: 15px;
+    max-height: calc(100vh - 210px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  #stream::-webkit-scrollbar { width: 10px; }
+  #stream::-webkit-scrollbar-track { background: transparent; }
+  #stream::-webkit-scrollbar-thumb { background: #2c3a58; border-radius: 5px; border: 2px solid var(--panel); }
+  #stream::-webkit-scrollbar-thumb:hover { background: #3b4c72; }
+
+  .stream-wrap { position: relative; }
+
+  /* 自动滚动开关 */
+  .switch {
+    display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
+    font-size: 12px; font-weight: 400; letter-spacing: 0; text-transform: none;
+    color: var(--muted);
+  }
+  .switch input {
+    appearance: none; -webkit-appearance: none;
+    width: 32px; height: 18px; margin: 0; border-radius: 999px;
+    background: #2a3550; border: 1px solid var(--border);
+    position: relative; cursor: pointer; transition: .15s; flex: 0 0 auto;
+  }
+  .switch input::after {
+    content: ''; position: absolute; top: 2px; left: 2px;
+    width: 12px; height: 12px; border-radius: 50%;
+    background: #7c8ab0; transition: .15s;
+  }
+  .switch input:checked { background: rgba(34,211,238,.28); border-color: var(--accent); }
+  .switch input:checked::after { left: 16px; background: var(--accent); }
+
+  /* 回到底部 */
+  #btn-jump {
+    position: absolute; right: 22px; bottom: 18px; flex: 0 0 auto;
+    padding: 8px 16px; border-radius: 999px;
+    background: #0e7490; border: 1px solid var(--accent); color: #fff;
+    font-size: 12.5px; font-weight: 500; cursor: pointer;
+    box-shadow: 0 6px 20px rgba(0,0,0,.45);
+    transition: opacity .15s, transform .15s;
+  }
+  #btn-jump[hidden] { display: none; }
+  #btn-jump:hover { background: #0891b2; transform: translateY(-1px); }
+
+  .empty { color: var(--muted); text-align: center; padding: 46px 20px; font-size: 13px; }
+  .hint { font-size: 11.5px; color: var(--muted); line-height: 1.55; }
+  code { background: var(--panel-2); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+</style>
+</head>
+<body>
+<div id="bg-layer"></div>
+<div id="bg-veil"></div>
+<header>
+  <h1>长江雨课堂 · <span>本地控制台</span></h1>
+  <div class="pills">
+    <span class="pill"><i class="dot" id="dot-browser"></i>浏览器 <b id="txt-browser">未接管</b></span>
+    <span class="pill"><i class="dot" id="dot-model"></i>模型 <b id="txt-model">—</b></span>
+    <span class="pill"><i class="dot" id="dot-watch"></i>监听 <b id="txt-watch">未启动</b></span>
+    <span class="pill"><i class="dot" id="dot-lesson"></i>自动进课堂 <b id="txt-lesson">关</b></span>
+    <span class="pill">队列 <b id="txt-stats">0 / 0</b></span>
+    <button class="pill pill-btn" id="btn-settings-toggle" type="button" title="控制台设置">⚙️ 设置</button>
+  </div>
+  <div class="card" id="settings-panel" hidden>
+    <h2 style="display:flex;align-items:center;justify-content:space-between">
+      <span>控制台设置</span>
+      <button class="ghost" id="btn-settings-close" type="button" style="flex:0;padding:2px 9px;font-size:12px;border-radius:6px">✕</button>
+    </h2>
+
+    <h3>模型服务</h3>
+    <div class="body">
+      <label class="field">服务商
+        <select id="provider"></select>
+      </label>
+      <label class="field">模型
+        <input type="text" id="model" list="model-options" placeholder="选择或直接输入模型名">
+        <datalist id="model-options"></datalist>
+      </label>
+      <label class="field">Base URL
+        <input type="text" id="base-url" placeholder="https://…/v1">
+      </label>
+      <div class="hint" id="provider-hint"></div>
+      <div class="hint" id="provider-note"></div>
+    </div>
+
+    <h3>作答</h3>
+    <div class="body">
+      <label class="field">作答模式
+        <select id="mode">
+          <option value="manual">manual — 只提示答案，不碰页面</option>
+          <option value="dom">dom — 在页面上点击选项并提交</option>
+          <option value="api">api — 直接调作答接口（实验性）</option>
+        </select>
+      </label>
+      <label class="switch"><input type="checkbox" id="dryrun"> 预演（只推理，不下发任何页面动作）</label>
+      <label class="switch"><input type="checkbox" id="auto-submit"> dom 模式下自动点「提交」</label>
+      <div class="field">
+        <span>最低置信度 <span class="value" id="min-confidence-value">0%</span></span>
+        <input type="range" id="min-confidence" min="0" max="100" step="5" value="0">
+      </div>
+      <div class="field"><span>点击选项后的等待</span>
+        <div class="inline-num"><input type="text" id="click-delay" value="0.8"><small>秒</small></div>
+      </div>
+      <div class="hint">模式改成 dom / api 且没勾「预演」时，才会真的操作页面。</div>
+    </div>
+
+    <h3>抓题与课堂</h3>
+    <div class="body">
+      <label class="switch"><input type="checkbox" id="dom-fallback"> 网络抓不到题时启用 DOM 兜底</label>
+      <div class="field"><span>DOM 轮询间隔</span>
+        <div class="inline-num"><input type="text" id="poll-interval" value="2"><small>秒</small></div>
+      </div>
+      <label class="switch"><input type="checkbox" id="auto-enter-lesson"> 自动进入上课中的课堂</label>
+      <div class="field"><span>课堂检查间隔</span>
+        <div class="inline-num"><input type="text" id="enter-lesson-interval" value="20"><small>秒（最小 5）</small></div>
+      </div>
+      <div class="hint">启动监听后立刻查一次「进行中的课堂」，之后按间隔复查；同一节课只进一次，换课才再跳。</div>
+    </div>
+
+    <h3>心跳日志</h3>
+    <div class="body">
+      <div class="field"><span>心跳间隔</span>
+        <div class="inline-num"><input type="text" id="heartbeat-interval" value="30"><small>秒（0 关闭，最小 1）</small></div>
+      </div>
+      <div class="hint">监听期间每隔这么久输出一次带边框的状态日志：监听时长、题目计数、接口/WebSocket 流量、当前页面。</div>
+    </div>
+
+    <h3>浏览器窗口</h3>
+    <div class="body">
+      <div class="field"><span>启动监听时的窗口尺寸</span>
+        <div class="inline-num">
+          <input type="text" id="window-width" value="800"><small>×</small>
+          <input type="text" id="window-height" value="600">
+        </div>
+      </div>
+      <div class="hint">任意一项填 0 表示不调整窗口大小。</div>
+    </div>
+
+    <h3>外观 · 自定义背景</h3>
+    <div class="body">
+      <label class="switch"><input type="checkbox" id="bg-enabled"> 启用自定义背景</label>
+      <div class="field"><span>背景类型</span>
+        <select id="bg-kind">
+          <option value="color">纯色</option>
+          <option value="gradient">渐变</option>
+          <option value="url">图片链接</option>
+          <option value="file">本地图片</option>
+        </select>
+      </div>
+      <div class="field" data-bg="color"><span>背景色</span>
+        <input type="color" id="bg-color" value="#0b1020">
+      </div>
+      <div class="field" data-bg="gradient"><span>渐变色 / 方向</span>
+        <div class="row" style="gap:8px">
+          <input type="color" id="bg-grad-a" value="#0b1020" style="flex:1 1 60px" title="起始色">
+          <input type="color" id="bg-grad-b" value="#14304a" style="flex:1 1 60px" title="结束色">
+          <select id="bg-grad-dir" style="flex:1 1 92px">
+            <option value="160deg">斜向下</option>
+            <option value="90deg">向右</option>
+            <option value="180deg">向下</option>
+            <option value="45deg">斜向上</option>
+          </select>
+        </div>
+      </div>
+      <div class="field" data-bg="url"><span>图片地址</span>
+        <input type="text" id="bg-url" placeholder="https://…/bg.jpg">
+      </div>
+      <div class="field" data-bg="file"><span>本地图片</span>
+        <input type="file" id="bg-file" accept="image/*">
+        <span class="hint" id="bg-file-hint">图片以 Base64 存在浏览器本地，建议小于 2 MB。</span>
+      </div>
+      <div class="field">
+        <span>遮罩浓度 <span class="value" id="bg-veil-value">0%</span></span>
+        <input type="range" id="bg-veil" min="0" max="90" step="5" value="0">
+      </div>
+      <div class="field">
+        <span>背景模糊 <span class="value" id="bg-blur-value">0px</span></span>
+        <input type="range" id="bg-blur" min="0" max="20" step="1" value="0">
+      </div>
+      <div class="row"><button class="ghost" id="btn-bg-reset">恢复默认</button></div>
+      <div class="hint">
+        设置保存在浏览器本地（localStorage），刷新后依然生效。<br>
+        背景偏亮时记得调高「遮罩浓度」，否则文字会看不清。
+      </div>
+    </div>
+  </div>
+</header>
+
+<main>
+  <aside>
+    <div class="card">
+      <h2>监听控制</h2>
+      <div class="body">
+        <div class="hint" id="run-hint">当前设置：加载中…</div>
+        <div class="row">
+          <button class="primary" id="btn-start">启动监听</button>
+          <button class="danger" id="btn-stop" disabled>停止</button>
+        </div>
+        <div class="row">
+          <button class="ghost" id="btn-attach">接管浏览器</button>
+          <button class="ghost" id="btn-dump">导出页面结构</button>
+        </div>
+        <div class="row"><button class="ghost" id="btn-settings-open">⚙️ 打开设置</button></div>
+        <div class="stats">
+          <div class="stat"><b id="s-problems">0</b><small>遇到</small></div>
+          <div class="stat"><b id="s-answered">0</b><small>作答</small></div>
+          <div class="stat"><b id="s-skipped">0</b><small>跳过</small></div>
+          <div class="stat"><b id="s-failed">0</b><small>失败</small></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>模拟检测 · 能否收到题目</h2>
+      <div class="body">
+        <div class="row" style="flex-direction:column">
+          <button id="btn-sim-offline">① 离线抓题自检</button>
+          <button id="btn-sim-browser">② 浏览器抓题自检</button>
+          <button id="btn-sim-live">③ 端到端投喂（需先启动监听）</button>
+        </div>
+        <div class="hint">
+          ① 不需要浏览器和登录，把仿真载荷直接喂给真实的解析链路，
+          验证题型映射、字段提取、去重与提交格式，并真实调用一次 DeepSeek。<br>
+          ② 往当前页面注入一张模拟答题卡，验证 DOM 兜底抓题、选项定位与点击、提交按钮识别。<br>
+          ③ 把仿真题目投喂给正在运行的监听会话，走完抓题 → 问模型 → 作答 → 落盘整条链路。
+        </div>
+        <div id="sim-result"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>手动提问</h2>
+      <div class="body">
+        <textarea id="ask-text" placeholder="单选 下列关于进程的说法正确的是&#10;A. 进程是资源分配的基本单位&#10;B. 线程是资源分配的基本单位"></textarea>
+        <div class="row"><button id="btn-ask">问一下 DeepSeek</button></div>
+      </div>
+    </div>
+  </aside>
+
+  <section class="stream">
+    <div class="card">
+      <h2 style="display:flex;align-items:center;gap:12px">
+        <span>实时事件流</span>
+        <span style="margin-left:auto"></span>
+        <label class="switch" title="开启后新事件会自动滚到底部；向上滚动会临时暂停">
+          <input type="checkbox" id="autoscroll" checked> 自动滚动
+        </label>
+        <button class="ghost" id="btn-clear" style="flex:0;padding:4px 12px;font-size:12px">清空</button>
+      </h2>
+      <div class="stream-wrap">
+        <div class="body" id="stream">
+          <div class="empty" id="stream-empty">还没有事件。点「离线抓题自检」可以先验证链路。</div>
+        </div>
+        <button id="btn-jump" type="button" hidden>↓ 回到底部</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const stream = $('stream');
+const empty = $('stream-empty');
+const seenSeq = new Set();
+
+// ---------------------------------------------------------------- 工具
+function esc(text) {
+  return String(text ?? '').replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[c]);
+}
+function time(ts) {
+  return new Date((ts || Date.now() / 1000) * 1000).toLocaleTimeString('zh-CN', { hour12: false });
+}
+// ---------------------------------------------------------------- 自动滚动
+const jumpBtn = $('btn-jump');
+const autoBox = $('autoscroll');
+const AUTOSCROLL_KEY = 'cjsolver.autoscroll';
+
+let autoScroll = localStorage.getItem(AUTOSCROLL_KEY) !== '0';
+autoBox.checked = autoScroll;
+
+function atBottom() {
+  // 事件流是独立滚动容器，不再依赖整页滚动
+  return stream.scrollHeight - stream.scrollTop - stream.clientHeight < 40;
+}
+
+/** 立刻（或平滑地）滚到底部。
+ *  用 'instant' 而不是 'auto'：'auto' 会遵循 CSS 的 scroll-behavior，
+ *  连续推送事件时平滑动画会被不断打断，结果永远停在半路上。 */
+function scrollToEnd(smooth) {
+  stream.scrollTo({ top: stream.scrollHeight, behavior: smooth ? 'smooth' : 'instant' });
+}
+
+/** 滚到底部，并在下一帧补一次。
+ *  必须**先同步滚一次**：标签页在后台时 requestAnimationFrame 根本不触发，
+ *  只靠 rAF 的话，切走再回来会发现日志没跟上。
+ *  补第二帧是因为图片/卡片高度可能在下一帧才稳定。 */
+function scrollToEndSoon(smooth) {
+  scrollToEnd(smooth);
+  if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(() => scrollToEnd(smooth));
+  }
+}
+
+function updateJump() {
+  // 只在「关了自动滚动且不在底部」时提示回到底部
+  jumpBtn.hidden = autoScroll || atBottom();
+}
+
+function setAutoScroll(value, smooth) {
+  autoScroll = value;
+  autoBox.checked = value;
+  localStorage.setItem(AUTOSCROLL_KEY, value ? '1' : '0');
+  if (value) scrollToEndSoon(!!smooth);
+  updateJump();
+}
+
+autoBox.addEventListener('change', () => setAutoScroll(autoBox.checked, true));
+jumpBtn.addEventListener('click', () => setAutoScroll(true, true));
+
+/* 暂停/恢复自动滚动只看**用户手势**，不看 scroll 事件。
+   理由：程序自己滚动、内容变高、浏览器恢复滚动位置都会触发 scroll，
+   靠它推断"用户往上滚了"必然误判——这正是之前那个 bug 的根源。
+   滚轮 / 触摸 / 键盘才是无歧义的意图信号。 */
+stream.addEventListener('wheel', (event) => {
+  if (event.deltaY < 0 && autoScroll) setAutoScroll(false);
+  else if (event.deltaY > 0 && !autoScroll && atBottom()) setAutoScroll(true);
+}, { passive: true });
+
+let touchStartY = null;
+stream.addEventListener('touchstart', (event) => {
+  touchStartY = event.touches.length ? event.touches[0].clientY : null;
+}, { passive: true });
+stream.addEventListener('touchmove', (event) => {
+  if (touchStartY === null || !event.touches.length) return;
+  const delta = event.touches[0].clientY - touchStartY;
+  if (delta > 12 && autoScroll) setAutoScroll(false);
+  touchStartY = event.touches[0].clientY;
+}, { passive: true });
+stream.addEventListener('touchend', () => { touchStartY = null; }, { passive: true });
+
+document.addEventListener('keydown', (event) => {
+  if (!autoScroll) return;
+  if (['PageUp', 'ArrowUp', 'Home'].includes(event.key)) setAutoScroll(false);
+});
+
+// scroll 事件只用来维护「回到底部」按钮的显隐，不再用来判断意图
+stream.addEventListener('scroll', updateJump, { passive: true });
+
+// 内容变高（图片加载、卡片展开）时也保持贴底
+if (typeof ResizeObserver !== 'undefined') {
+  let lastHeight = 0;
+  new ResizeObserver(() => {
+    const height = stream.scrollHeight;
+    if (height !== lastHeight) {
+      lastHeight = height;
+      if (autoScroll) scrollToEnd(false);
+      else updateJump();
+    }
+  }).observe(stream);
+}
+
+// 从后台切回来时补一次贴底（后台期间 rAF 不触发，浏览器也可能压缩了滚动位置）
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && autoScroll) scrollToEndSoon(false);
+});
+
+async function api(path, body) {
+  const options = body === undefined ? {} : {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  };
+  const response = await fetch(path, options);
+  try { return await response.json(); }
+  catch { return { ok: false, error: `HTTP ${response.status}` }; }
+}
+
+function push(node) {
+  if (empty) empty.style.display = 'none';
+  stream.appendChild(node);
+  while (stream.children.length > 400) stream.removeChild(stream.firstChild);
+  if (autoScroll) scrollToEndSoon(false);
+  else updateJump();
+}
+
+/** 带边框的日志块 */
+function logCard(message, kind = 'info', ts) {
+  const div = document.createElement('div');
+  div.className = 'log ' + kind;
+  const stamp = document.createElement('span');
+  stamp.className = 'ts';
+  stamp.textContent = time(ts);
+  const text = document.createElement('span');
+  text.className = 'msg';
+  text.textContent = message;
+  div.append(stamp, text);
+  return div;
+}
+
+function toast(message, kind = 'error') {
+  push(logCard(message, kind));
+}
+
+// ---------------------------------------------------------------- 自定义背景
+const BG_KEY = 'cjsolver.background.v1';
+const BG_DEFAULT = {
+  enabled: false, kind: 'color',
+  color: '#0b1020',
+  gradA: '#0b1020', gradB: '#14304a', gradDir: '160deg',
+  url: '', file: '', fileName: '',
+  veil: 0, blur: 0
+};
+const BG_KINDS = ['color', 'gradient', 'url', 'file'];
+const bgState = Object.assign({}, BG_DEFAULT, loadBg());
+
+function loadBg() {
+  try {
+    const merged = Object.assign({}, BG_DEFAULT, JSON.parse(localStorage.getItem(BG_KEY) || '{}'));
+    if (!BG_KINDS.includes(merged.kind)) merged.kind = 'color';
+    merged.veil = Number(merged.veil) || 0;
+    merged.blur = Number(merged.blur) || 0;
+    return merged;
+  } catch (error) {
+    return {};
+  }
+}
+
+function saveBg() {
+  try {
+    localStorage.setItem(BG_KEY, JSON.stringify(bgState));
+  } catch (error) {
+    toast('背景设置没能存到本地（多半是图片太大），刷新后会回到上一次的设置');
+  }
+}
+
+// 拼进 CSS url() 之前先转义，避免引号/括号把 background-image 写坏
+function cssUrl(value) {
+  return String(value || '').replace(/["'\\\n\r()]/g, (c) => ({
+    '"': '%22', "'": '%27', '\\': '%5C', '(': '%28', ')': '%29', '\n': '', '\r': ''
+  })[c]);
+}
+
+function bgImage() {
+  if (bgState.kind === 'gradient') {
+    return `linear-gradient(${bgState.gradDir || '160deg'}, ${bgState.gradA}, ${bgState.gradB})`;
+  }
+  if (bgState.kind === 'url' && bgState.url) return `url("${cssUrl(bgState.url)}")`;
+  if (bgState.kind === 'file' && bgState.file) return `url("${cssUrl(bgState.file)}")`;
+  return 'none';
+}
+
+function applyBg() {
+  const layer = $('bg-layer');
+  const veil = $('bg-veil');
+  const on = !!bgState.enabled;
+  document.documentElement.classList.toggle('custom-bg', on);
+  if (!on) {
+    layer.style.backgroundImage = 'none';
+    layer.style.backgroundColor = 'var(--bg)';
+    layer.style.filter = 'none';
+    layer.style.transform = 'none';
+    veil.style.opacity = '0';
+    return;
+  }
+  if (bgState.kind === 'color') {
+    layer.style.backgroundImage = 'none';
+    layer.style.backgroundColor = bgState.color || '#0b1020';
+  } else {
+    layer.style.backgroundColor = '#070b16';
+    layer.style.backgroundImage = bgImage();
+  }
+  const blur = Number(bgState.blur) || 0;
+  layer.style.filter = blur ? `blur(${blur}px)` : 'none';
+  // 模糊会让固定层的边缘发虚，稍微放大一点盖住
+  layer.style.transform = blur ? 'scale(1.06)' : 'none';
+  veil.style.opacity = String((Number(bgState.veil) || 0) / 100);
+}
+
+function refreshBgLabels() {
+  $('bg-veil-value').textContent = `${Number(bgState.veil) || 0}%`;
+  $('bg-blur-value').textContent = `${Number(bgState.blur) || 0}px`;
+  $('bg-file-hint').textContent = bgState.file
+    ? `已选：${bgState.fileName || '本地图片'}（换设备后需要重新选择）`
+    : '图片以 Base64 存在浏览器本地，建议小于 2 MB。';
+  document.querySelectorAll('[data-bg]').forEach((node) => {
+    node.style.display = node.getAttribute('data-bg') === bgState.kind ? '' : 'none';
+  });
+}
+
+// 把已保存的状态回填到表单（只在加载和恢复默认时调用，避免打断正在输入的地址）
+function syncBgForm() {
+  $('bg-enabled').checked = !!bgState.enabled;
+  $('bg-kind').value = bgState.kind;
+  $('bg-color').value = bgState.color;
+  $('bg-grad-a').value = bgState.gradA;
+  $('bg-grad-b').value = bgState.gradB;
+  $('bg-grad-dir').value = bgState.gradDir;
+  $('bg-url').value = bgState.url;
+  $('bg-veil').value = bgState.veil;
+  $('bg-blur').value = bgState.blur;
+  refreshBgLabels();
+}
+
+function readBgForm() {
+  bgState.enabled = $('bg-enabled').checked;
+  bgState.kind = $('bg-kind').value;
+  bgState.color = $('bg-color').value;
+  bgState.gradA = $('bg-grad-a').value;
+  bgState.gradB = $('bg-grad-b').value;
+  bgState.gradDir = $('bg-grad-dir').value;
+  bgState.url = $('bg-url').value.trim();
+  bgState.veil = Number($('bg-veil').value) || 0;
+  bgState.blur = Number($('bg-blur').value) || 0;
+}
+
+function onBgInput() {
+  readBgForm();
+  refreshBgLabels();
+  applyBg();
+  saveBg();
+}
+
+for (const id of ['bg-enabled', 'bg-kind', 'bg-color', 'bg-grad-a', 'bg-grad-b',
+                  'bg-grad-dir', 'bg-url', 'bg-veil', 'bg-blur']) {
+  $(id).addEventListener('input', onBgInput);
+  $(id).addEventListener('change', onBgInput);
+}
+
+$('bg-file').addEventListener('change', (event) => {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  if (file.size > 4 * 1024 * 1024) {
+    toast('图片超过 4 MB，浏览器本地存储放不下，换一张小一点的吧');
+    event.target.value = '';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    bgState.file = String(reader.result || '');
+    bgState.fileName = file.name;
+    readBgForm();
+    refreshBgLabels();
+    applyBg();
+    saveBg();
+  };
+  reader.onerror = () => toast('读取本地图片失败');
+  reader.readAsDataURL(file);
+});
+
+$('btn-bg-reset').addEventListener('click', () => {
+  Object.assign(bgState, BG_DEFAULT);
+  try { localStorage.removeItem(BG_KEY); } catch (error) { /* 忽略 */ }
+  syncBgForm();
+  applyBg();
+  toast('已恢复默认背景', 'info');
+});
+
+// 顶栏设置浮层的开合
+function toggleSettingsPanel(force) {
+  const panel = $('settings-panel');
+  const open = force === undefined ? panel.hidden : !!force;
+  panel.hidden = !open;
+  $('btn-settings-toggle').classList.toggle('active', open);
+}
+
+$('btn-settings-toggle').addEventListener('click', (event) => {
+  event.stopPropagation();
+  toggleSettingsPanel();
+});
+$('btn-settings-open').addEventListener('click', () => toggleSettingsPanel(true));
+$('btn-settings-close').addEventListener('click', () => toggleSettingsPanel(false));
+document.addEventListener('click', (event) => {
+  const panel = $('settings-panel');
+  if (panel.hidden) return;
+  if (panel.contains(event.target) || $('btn-settings-toggle').contains(event.target)) return;
+  toggleSettingsPanel(false);
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') toggleSettingsPanel(false);
+});
+
+// ------------------------------------------------ 控制台设置（含自动进课堂）
+// 面板里所有可调项，改动后防抖保存到服务端（console-settings.json）
+const SETTINGS_INPUTS = [
+  'mode', 'dryrun', 'auto-submit', 'min-confidence', 'click-delay',
+  'dom-fallback', 'poll-interval', 'auto-enter-lesson', 'enter-lesson-interval',
+  'heartbeat-interval', 'window-width', 'window-height'
+];
+
+const settingsState = {
+  mode: 'manual', dry_run: false, auto_submit: true, min_confidence: 0, click_delay: 0.8,
+  dom_fallback: true, poll_interval: 2, auto_enter_lesson: false, enter_lesson_interval: 20,
+  heartbeat_interval: 30, window_width: 800, window_height: 600,
+  provider: 'deepseek', model: 'deepseek-chat', base_url: 'https://api.deepseek.com'
+};
+
+// 服务商预设，由 /api/providers 填充
+let providerList = [];
+let providerMeta = { key_configured: false, generic_key_env: 'AI_API_KEY' };
+
+const MODE_TEXT = {
+  manual: 'manual 只提示',
+  dom: 'dom 自动作答',
+  api: 'api 直接调接口'
+};
+
+function currentProvider() {
+  return providerList.find((item) => item.id === settingsState.provider) || null;
+}
+
+/** 服务商下拉 + 模型候选 + Key 状态提示 */
+function renderProviderControls() {
+  const select = $('provider');
+  select.innerHTML = providerList
+    .map((item) => `<option value="${esc(item.id)}">${esc(item.label)}</option>`)
+    .join('');
+  select.value = settingsState.provider;
+
+  const provider = currentProvider();
+  const options = (provider && provider.models) || [];
+  $('model-options').innerHTML = options
+    .map((name) => `<option value="${esc(name)}"></option>`)
+    .join('');
+  // 输入框已经填了别的模型名就别覆盖用户的选择
+  if (options.length && !$('model').value.trim()) $('model').value = options[0];
+
+  const keyEnv = (provider && provider.key_env) || providerMeta.generic_key_env;
+  const ok = providerMeta.key_configured;
+  $('provider-hint').innerHTML = ok
+    ? `Key 状态：<span style="color:var(--ok)">已配置</span>（来自 .env，服务商专属变量 <code>${esc(keyEnv)}</code>）`
+    : `Key 状态：<span style="color:var(--warn)">未配置</span> —— 请在项目目录的 <code>.env</code> 里填写 <code>${esc(keyEnv)}</code>`
+      + `（或通用的 <code>${esc(providerMeta.generic_key_env)}</code>），改完重启控制台`;
+  const notes = [];
+  if (provider && provider.note) notes.push(esc(provider.note));
+  if (provider && provider.docs) {
+    notes.push(`<a href="${esc(provider.docs)}" target="_blank" rel="noopener">查看官方文档</a>`);
+  }
+  $('provider-note').innerHTML = notes.join(' · ');
+}
+
+async function loadProviders() {
+  const result = await api('/api/providers');
+  if (!result.ok) return;
+  providerList = result.providers || [];
+  providerMeta = {
+    key_configured: !!result.key_configured,
+    generic_key_env: result.generic_key_env || 'AI_API_KEY'
+  };
+  settingsState.provider = result.current || 'deepseek';
+  settingsState.model = result.model || '';
+  settingsState.base_url = result.base_url || '';
+  $('model').value = settingsState.model;
+  $('base-url').value = settingsState.base_url;
+  renderProviderControls();
+}
+
+$('provider').addEventListener('change', () => {
+  const provider = providerList.find((item) => item.id === $('provider').value);
+  if (!provider) return;
+  settingsState.provider = provider.id;
+  // 换服务商就顺手把地址和模型带过去，仍然可以手动改
+  if (provider.base_url) $('base-url').value = provider.base_url;
+  if (provider.models && provider.models.length) $('model').value = provider.models[0];
+  renderProviderControls();
+  saveSettings({ quiet: true });
+});
+
+$('model').addEventListener('change', () => saveSettings({ quiet: true }));
+$('base-url').addEventListener('change', () => saveSettings({ quiet: true }));
+
+function numberOr(id, fallback) {
+  const value = Number($(id).value);
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function readSettingsForm() {
+  settingsState.mode = $('mode').value;
+  settingsState.dry_run = $('dryrun').checked;
+  settingsState.auto_submit = $('auto-submit').checked;
+  settingsState.min_confidence = numberOr('min-confidence', 0) / 100;
+  settingsState.click_delay = numberOr('click-delay', 0.8);
+  settingsState.dom_fallback = $('dom-fallback').checked;
+  settingsState.poll_interval = numberOr('poll-interval', 2);
+  settingsState.auto_enter_lesson = $('auto-enter-lesson').checked;
+  settingsState.enter_lesson_interval = numberOr('enter-lesson-interval', 20);
+  settingsState.heartbeat_interval = numberOr('heartbeat-interval', 30);
+  settingsState.provider = $('provider').value || settingsState.provider;
+  settingsState.model = $('model').value.trim();
+  settingsState.base_url = $('base-url').value.trim();
+  settingsState.window_width = numberOr('window-width', 800);
+  settingsState.window_height = numberOr('window-height', 600);
+  $('min-confidence-value').textContent = $('min-confidence').value + '%';
+  return settingsState;
+}
+
+function updateRunHint() {
+  const bits = [MODE_TEXT[settingsState.mode] || settingsState.mode];
+  if (settingsState.dry_run) bits.push('预演');
+  if (settingsState.auto_enter_lesson) bits.push('自动进课堂');
+  if (settingsState.window_width > 0 && settingsState.window_height > 0) {
+    bits.push(`窗口 ${settingsState.window_width}×${settingsState.window_height}`);
+  }
+  if (settingsState.model) bits.push(settingsState.model);
+  $('run-hint').textContent = `当前设置：${bits.join(' · ')}`;
+}
+
+function fillSettingsForm(values) {
+  const answer = values.answer || {};
+  const solver = values.solver || {};
+  const browser = values.browser || {};
+  const deepseek = values.deepseek || {};
+
+  $('mode').value = answer.mode || 'manual';
+  $('dryrun').checked = !!answer.dry_run;
+  $('auto-submit').checked = answer.auto_submit !== false;
+  $('min-confidence').value = Math.round((answer.min_confidence || 0) * 100);
+  $('click-delay').value = answer.click_delay ?? 0.8;
+  $('dom-fallback').checked = solver.dom_fallback !== false;
+  $('poll-interval').value = solver.poll_interval ?? 2;
+  $('auto-enter-lesson').checked = !!solver.auto_enter_lesson;
+  $('enter-lesson-interval').value = solver.enter_lesson_interval ?? 20;
+  $('heartbeat-interval').value = solver.heartbeat_interval ?? 30;
+  $('window-width').value = browser.window_width ?? 800;
+  $('window-height').value = browser.window_height ?? 600;
+  if (deepseek.provider) settingsState.provider = deepseek.provider;
+  if (deepseek.model) $('model').value = deepseek.model;
+  if (deepseek.base_url) $('base-url').value = deepseek.base_url;
+  renderProviderControls();
+  readSettingsForm();
+  updateRunHint();
+}
+
+function settingsPayload() {
+  return {
+    answer: {
+      mode: settingsState.mode,
+      dry_run: settingsState.dry_run,
+      auto_submit: settingsState.auto_submit,
+      min_confidence: settingsState.min_confidence,
+      click_delay: settingsState.click_delay
+    },
+    solver: {
+      dom_fallback: settingsState.dom_fallback,
+      poll_interval: settingsState.poll_interval,
+      auto_enter_lesson: settingsState.auto_enter_lesson,
+      enter_lesson_interval: settingsState.enter_lesson_interval,
+      heartbeat_interval: settingsState.heartbeat_interval
+    },
+    browser: {
+      window_width: settingsState.window_width,
+      window_height: settingsState.window_height
+    },
+    deepseek: {
+      provider: settingsState.provider,
+      model: settingsState.model,
+      base_url: settingsState.base_url
+    }
+  };
+}
+
+// 服务端会把越界数字夹到合法区间，把最终值写回输入框（正在编辑的除外）
+function setIfIdle(id, value) {
+  const el = $(id);
+  if (!el || document.activeElement === el) return;
+  if (value === undefined || value === null) return;
+  el.value = value;
+}
+
+function writeBackSettings(values) {
+  const answer = values.answer || {};
+  const solver = values.solver || {};
+  const browser = values.browser || {};
+  setIfIdle('enter-lesson-interval', solver.enter_lesson_interval);
+  setIfIdle('poll-interval', solver.poll_interval);
+  setIfIdle('heartbeat-interval', solver.heartbeat_interval);
+  setIfIdle('click-delay', answer.click_delay);
+  setIfIdle('min-confidence', Math.round((answer.min_confidence || 0) * 100));
+  setIfIdle('window-width', browser.window_width);
+  setIfIdle('window-height', browser.window_height);
+}
+
+async function saveSettings({ quiet = false } = {}) {
+  readSettingsForm();
+  updateRunHint();
+  const result = await api('/api/settings', settingsPayload());
+  if (!result.ok) {
+    toast(result.error || '设置保存失败');
+    await loadSettings();
+    return null;
+  }
+  if (result.values) {
+    writeBackSettings(result.values);
+    // 保存后服务端可能重新挑了 Key（换服务商），刷新一次状态提示
+    await loadProviders();
+    readSettingsForm();
+    updateRunHint();
+  }
+  if (!quiet) toast('设置已保存', 'info');
+  return result;
+}
+
+let settingsTimer = null;
+function scheduleSettingsSave() {
+  readSettingsForm();
+  updateRunHint();
+  if (settingsTimer) clearTimeout(settingsTimer);
+  // 拖滑杆时不必每格都发请求
+  settingsTimer = setTimeout(() => saveSettings({ quiet: true }), 400);
+}
+
+async function loadSettings() {
+  const result = await api('/api/settings');
+  if (!result.ok) {
+    toast(result.error || '读取设置失败');
+    return;
+  }
+  fillSettingsForm(result.values || {});
+}
+
+for (const id of SETTINGS_INPUTS) {
+  $(id).addEventListener('input', scheduleSettingsSave);
+  $(id).addEventListener('change', scheduleSettingsSave);
+}
+
+// ---------------------------------------------------------------- 状态
+async function refresh() {
+  const state = await api('/api/state');
+  if (state.error) return;
+
+  const browser = state.browser || {};
+  $('txt-browser').textContent = browser.attached ? '已接管' : '未接管';
+  $('dot-browser').className = 'dot ' + (browser.attached ? 'ok' : 'off');
+
+  const model = state.model || {};
+  $('txt-model').textContent = model.configured ? model.name : '未配置 Key';
+  $('dot-model').className = 'dot ' + (model.configured ? 'ok' : 'warn');
+
+  $('txt-watch').textContent = state.watching ? state.answer.mode : '未启动';
+  $('dot-watch').className = 'dot ' + (state.watching ? 'ok' : 'off');
+
+  const solver = state.solver || {};
+  const autoLesson = !!solver.auto_enter_lesson;
+  $('txt-lesson').textContent = autoLesson ? '开' : '关';
+  $('dot-lesson').className = 'dot ' + (autoLesson ? 'ok' : 'off');
+
+  const stats = state.stats || { problems: 0, answered: 0, skipped: 0, failed: 0 };
+  $('s-problems').textContent = stats.problems ?? 0;
+  $('s-answered').textContent = stats.answered ?? 0;
+  $('s-skipped').textContent = stats.skipped ?? 0;
+  $('s-failed').textContent = stats.failed ?? 0;
+  $('txt-stats').textContent = `${stats.problems ?? 0} / ${stats.answered ?? 0}`;
+
+  $('btn-start').disabled = state.watching || state.busy;
+  $('btn-stop').disabled = !state.watching;
+}
+
+// ---------------------------------------------------------------- 渲染
+function problemCard(data) {
+  const p = data.problem || {};
+  const el = document.createElement('div');
+  el.className = 'ev problem';
+  const options = (p.options || []).map((o, i) =>
+    `<div class="opt"><i>${esc(o.letter)}</i>${esc(o.text)}</div>`).join('');
+  const blanks = (p.blanks || []).length
+    ? `<div class="hint">空位：${esc((p.blanks || []).join(' / '))}</div>` : '';
+  el.innerHTML = `
+    <div class="hd"><span class="tag">第 ${data.index ?? '-'} 题</span>
+      <span class="tag">${esc(p.type_label || p.type || '')}</span>
+      <span class="tag">${esc(p.source || '')}</span>
+      <span style="margin-left:auto">${time()}</span></div>
+    <div class="bd">
+      <div class="stem">${esc(p.prompt) || '<span style="color:var(--muted)">（题干在课件图片中）</span>'}</div>
+      ${options}${blanks}
+    </div>`;
+  return el;
+}
+
+function answerCard(data) {
+  const s = data.suggestion || {};
+  const submit = data.submit || {};
+  const failed = !data.ok;
+  const el = document.createElement('div');
+  el.className = 'ev answer' + (failed ? ' fail' : '');
+
+  const confidence = (s.confidence === null || s.confidence === undefined)
+    ? '—' : Math.round(s.confidence * 100) + '%';
+  const status = submit.mode
+    ? `<span class="tag">${esc(submit.detail || submit.mode)}</span>` : '';
+
+  el.innerHTML = `
+    <div class="hd"><span class="tag">${failed ? '未能作答' : 'AI 答案'}</span>${status}
+      <span style="margin-left:auto">${time()}</span></div>
+    <div class="bd">
+      ${failed
+        ? `<div class="answer-line" style="color:var(--warn)">${esc(s.failure_reason || data.reason || '无可用答案')}</div>`
+        : `<div class="answer-line">${esc(s.display || '')}</div>`}
+      ${s.explanation ? `<div class="explain">${esc(s.explanation)}</div>` : ''}
+      <div class="meta">
+        <span>置信度 ${confidence}</span>
+        <span>模型 ${esc(s.model || '—')}</span>
+        <span>耗时 ${esc(s.elapsed ?? '—')}s</span>
+      </div>
+    </div>`;
+  return el;
+}
+
+function heartbeatCard(data) {
+  const s = data.stats || {};
+  const c = data.capture || {};
+  const page = data.page || {};
+  const el = document.createElement('div');
+  el.className = 'ev heartbeat';
+  const item = (value, label) =>
+    `<div class="hb-item"><b>${esc(value)}</b><small>${esc(label)}</small></div>`;
+  el.innerHTML = `
+    <div class="hd"><span class="tag">心跳</span>
+      <span class="tag">已监听 ${esc(data.uptime_text || '—')}</span>
+      <span style="margin-left:auto">${time()}</span></div>
+    <div class="bd">
+      <div class="hb-grid">
+        ${item(s.problems ?? 0, '遇到题目')}
+        ${item(s.answered ?? 0, '已作答')}
+        ${item(s.skipped ?? 0, '跳过')}
+        ${item(s.failed ?? 0, '失败')}
+        ${item(c.response ?? 0, '接口响应')}
+        ${item(c.ws_frame ?? 0, 'WS 帧')}
+        ${item(data.queue ?? 0, '待处理')}
+      </div>
+      <div class="hb-page">
+        ${page.alive
+          ? `页面：<span class="t">${esc(page.title || '(无标题)')}</span><br>${esc(page.url || '')}`
+          : '<span style="color:var(--warn)">页面已关闭或不可用</span>'}
+      </div>
+    </div>`;
+  return el;
+}
+
+function simulationCard(report) {
+  const el = document.createElement('div');
+  el.className = 'ev sim';
+  const rows = (report.checks || []).map((check) => {
+    const mark = check.skipped ? '○' : (check.ok ? '✓' : '✗');
+    const cls = check.skipped ? 'skip' : (check.ok ? 'ok' : 'no');
+    return `<div class="check"><div class="mark ${cls}">${mark}</div>
+      <div class="txt"><b>${esc(check.label)}</b><small>${esc(check.detail)}</small></div></div>`;
+  }).join('');
+  el.innerHTML = `
+    <div class="hd"><span class="tag">${esc(report.title || '模拟检测')}</span>
+      <span class="tag" style="color:${report.ok ? 'var(--ok)' : 'var(--err)'}">
+        ${report.ok ? '全部通过' : '存在未通过项'}</span>
+      <span class="tag">${esc(report.elapsed)}s</span>
+      <span style="margin-left:auto">${time()}</span></div>
+    <div class="bd">
+      ${report.error ? `<div class="log error"><span class="msg">${esc(report.error)}</span></div>` : ''}
+      ${rows}
+      <div class="hint" style="margin-top:10px">
+        本题集识别出 ${(report.problems || []).length} 道题目。
+      </div>
+    </div>`;
+  return el;
+}
+
+function render(event) {
+  if (event.seq !== undefined) {
+    if (seenSeq.has(event.seq)) return;
+    seenSeq.add(event.seq);
+    if (seenSeq.size > 2000) seenSeq.clear();
+  }
+  const data = event.data || {};
+  switch (event.type) {
+    case 'hello':
+      refresh();
+      break;
+    case 'problem':
+      push(problemCard(data));
+      break;
+    case 'thinking':
+      push(logCard(`… 正在推理 ${data.problem_id ?? ''}`, 'thinking', event.ts));
+      break;
+    case 'answer':
+      push(answerCard(data));
+      break;
+    case 'heartbeat':
+      push(heartbeatCard(data));
+      break;
+    case 'simulation':
+      push(simulationCard(data));
+      renderSimSummary(data);
+      break;
+    case 'sim-log':
+      push(logCard(data.message, 'sim', event.ts));
+      break;
+    case 'log':
+      push(logCard(data.message, data.level || 'info', event.ts));
+      break;
+    case 'warn':
+      push(logCard('⚠ ' + data.message, 'warn', event.ts));
+      break;
+    case 'error':
+      push(logCard('✗ ' + data.message, 'error', event.ts));
+      break;
+    case 'skip':
+      push(logCard(`跳过 ${data.problem_id}：${data.reason}`, 'skip', event.ts));
+      break;
+    case 'browser':
+      refresh();
+      break;
+    case 'watching':
+      refresh();
+      break;
+    default:
+      break;
+  }
+}
+
+function renderSimSummary(report) {
+  const rows = (report.checks || []).map((check) => {
+    const mark = check.skipped ? '○' : (check.ok ? '✓' : '✗');
+    const cls = check.skipped ? 'skip' : (check.ok ? 'ok' : 'no');
+    return `<div class="check"><div class="mark ${cls}">${mark}</div>
+      <div class="txt"><b>${esc(check.label)}</b><small>${esc(check.detail)}</small></div></div>`;
+  }).join('');
+  $('sim-result').innerHTML =
+    `<div class="hint" style="margin-top:4px;color:${report.ok ? 'var(--ok)' : 'var(--err)'}">
+       ${esc(report.title)}：${report.ok ? '全部通过' : '存在未通过项'}（${esc(report.elapsed)}s）
+     </div>${rows}`;
+}
+
+// ---------------------------------------------------------------- SSE
+function connect() {
+  const source = new EventSource('/api/events');
+  source.onmessage = (message) => {
+    try { render(JSON.parse(message.data)); }
+    catch (error) { console.error('解析事件失败', error, message.data); }
+  };
+  source.onerror = () => {
+    $('dot-watch').className = 'dot warn';
+  };
+  return source;
+}
+
+// ---------------------------------------------------------------- 交互
+async function withBusy(button, task) {
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = '执行中…';
+  try { await task(); }
+  finally { button.disabled = false; button.textContent = original; refresh(); }
+}
+
+$('btn-start').addEventListener('click', () => withBusy($('btn-start'), async () => {
+  // 先把面板里的设置落盘，避免「刚改完就点启动」用到旧配置
+  await saveSettings({ quiet: true });
+  const { mode, dry_run: dryRun, auto_enter_lesson: autoEnter } = settingsState;
+  if (mode !== 'manual' && !dryRun) {
+    const extra = autoEnter ? '，并会自动进入上课中的课堂' : '';
+    if (!confirm(`即将以 ${mode} 模式自动作答，会真实操作页面${extra}。确认继续？`)) return;
+  }
+  const result = await api('/api/watch/start', {});
+  if (!result.ok) toast(result.error || '启动失败');
+  else toast('监听已启动', 'info');
+}));
+
+$('btn-stop').addEventListener('click', () => withBusy($('btn-stop'), async () => {
+  const result = await api('/api/watch/stop', {});
+  if (!result.ok) toast(result.error || '停止失败');
+  else toast('监听已停止', 'info');
+}));
+
+$('btn-attach').addEventListener('click', () => withBusy($('btn-attach'), async () => {
+  const result = await api('/api/browser/attach', {});
+  if (!result.ok) toast(result.error || '接管失败');
+  else toast(`已接管：${result.url}`, 'info');
+}));
+
+$('btn-dump').addEventListener('click', () => withBusy($('btn-dump'), async () => {
+  const result = await api('/api/dump', {});
+  toast(result.ok ? `页面结构已导出到 ${result.path}` : (result.error || '导出失败'),
+        result.ok ? 'info' : 'error');
+}));
+
+for (const [id, kind] of [['btn-sim-offline', 'offline'],
+                          ['btn-sim-browser', 'browser'],
+                          ['btn-sim-live', 'live']]) {
+  $(id).addEventListener('click', () => withBusy($(id), async () => {
+    const result = await api('/api/simulate', { kind });
+    if (!result.ok) toast(result.error || '模拟检测失败');
+  }));
+}
+
+$('btn-ask').addEventListener('click', () => withBusy($('btn-ask'), async () => {
+  const text = $('ask-text').value.trim();
+  if (!text) { toast('请先输入题目'); return; }
+  const result = await api('/api/ask', { text });
+  if (!result.ok) toast(result.error || '提问失败');
+}));
+
+$('btn-clear').addEventListener('click', () => {
+  stream.querySelectorAll('.ev, .log').forEach((node) => node.remove());
+  empty.style.display = '';
+  updateJump();
+});
+
+// ---------------------------------------------------------------- 启动
+syncBgForm();
+applyBg();
+loadProviders().then(() => loadSettings());
+connect();
+refresh();
+setInterval(refresh, 4000);
+</script>
+</body>
+</html>

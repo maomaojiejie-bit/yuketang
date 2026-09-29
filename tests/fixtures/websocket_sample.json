@@ -1,0 +1,10 @@
+{
+  "op": "problem",
+  "lessonid": "lesson-abc",
+  "data": {
+    "problemId": 9990001,
+    "problemType": 1,
+    "prompt": "HTTP 默认端口是？",
+    "options": [{ "content": "21" }, { "content": "80" }, { "content": "443" }]
+  }
+}

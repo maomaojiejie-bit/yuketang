@@ -1,0 +1,25 @@
+{
+  "answer": {
+    "mode": "manual",
+    "dry_run": false,
+    "auto_submit": true,
+    "min_confidence": 0.0,
+    "click_delay": 0.8
+  },
+  "solver": {
+    "dom_fallback": true,
+    "poll_interval": 2.0,
+    "auto_enter_lesson": true,
+    "enter_lesson_interval": 20.0,
+    "heartbeat_interval": 30.0
+  },
+  "browser": {
+    "window_width": 800,
+    "window_height": 600
+  },
+  "deepseek": {
+    "provider": "deepseek",
+    "model": "deepseek-chat",
+    "base_url": "https://api.deepseek.com"
+  }
+}

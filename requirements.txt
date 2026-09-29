@@ -1,0 +1,10 @@
+# 浏览器自动化：仅使用 CDP 接管本机 Chrome，无需 `playwright install` 下载内置浏览器
+playwright>=1.44
+# DeepSeek / OpenAI 兼容 HTTP 客户端
+httpx>=0.27
+# 本地网页控制台（与 Playwright 共用同一个 asyncio 事件循环）
+aiohttp>=3.9
+# 配置与输出
+PyYAML>=6.0
+rich>=13.7
+python-dotenv>=1.0

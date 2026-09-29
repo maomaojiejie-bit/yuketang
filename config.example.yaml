@@ -1,0 +1,44 @@
+# 复制为 config.yaml 后按需修改。
+# 优先级：命令行参数 > 环境变量(.env) > config.yaml > 内置默认值
+
+site: changjiang          # changjiang=长江雨课堂 | standard=雨课堂 | pro=荷塘雨课堂
+
+browser:
+  cdp_url: http://127.0.0.1:9222   # Chrome 远程调试地址
+  chrome_path: ""                  # 留空则自动探测常见安装路径
+  user_data_dir: .chrome-profile   # 专用配置目录（首次需在此窗口登录一次）
+  auto_launch: true                # 端口未监听时自动以调试模式拉起 Chrome
+  launch_timeout: 40               # 等待调试端口就绪的秒数
+  window_width: 800                # 启动监听时把 Chrome 窗口调整到的宽度（0=不调整）
+  window_height: 600               # 同上，高度
+
+deepseek:
+  api_key: ""                      # 建议写在 .env 的 DEEPSEEK_API_KEY 中
+  base_url: https://api.deepseek.com
+  model: deepseek-chat
+  temperature: 0.0
+  timeout: 90
+  max_tokens: 1200
+  json_mode: true                  # 使用 response_format=json_object
+  extra_prompt: ""                 # 追加到每次提问的额外要求，例如「请用中文解释」
+  vision_enabled: false            # 题干在课件图片里时，改用支持视觉的 OpenAI 兼容模型
+  vision_model: ""                 # 例如 qwen-vl-max / glm-4v；deepseek-chat 不支持图片
+
+answer:
+  mode: manual                     # manual=只给答案由你点 | dom=自动点击选项 | api=直接调接口(实验性)
+  dry_run: false                   # true 时任何模式都不会真正提交
+  min_confidence: 0.0              # 低于该置信度只提示不自动作答
+  auto_submit: true                # dom 模式下是否自动点「提交」
+  click_delay: 0.8                 # 点击选项后的等待秒数
+  submit_button_texts: [提交, 确定, 交卷, 提交答案, 确认提交]
+  option_selectors: []             # 留空使用内置启发式；可填 CSS 选择器数组精确定位选项
+  question_selectors: []           # 同上，用于 DOM 兜底抓题
+
+solver:
+  poll_interval: 2.0               # DOM 兜底轮询间隔（秒）
+  dom_fallback: true               # 网络抓不到题时启用 DOM 兜底
+  auto_enter_lesson: false         # 检测到正在上课时自动跳转课堂页
+  enter_lesson_interval: 20.0
+  heartbeat_interval: 30.0         # 监听期间每隔多少秒输出一次带边框的心跳日志，设 0 关闭
+  record_dir: records              # 问答记录（JSONL）输出目录
+  log_level: INFO

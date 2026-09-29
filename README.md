@@ -109,8 +109,9 @@ python run.py --web              # 或：打开网页控制台 http://127.0.0.1:
 
 > 元宝 App 没有公开 API，表里是同底座的**腾讯混元**接口。
 
-题干画在课件图片里时（接口只给 `image_url`），可开 `vision_enabled` 并指向一个
-支持视觉的模型（如 `qwen-vl-max`）；`deepseek-chat` 本身不支持图片。
+题干画在课件图片里时（接口只给 `image_url`），打开 `vision_enabled` 即可：
+`deepseek-flash` 本身就支持看图，`vision_model` 留空就用当前模型；
+换别家时再填对应视觉模型（如 `qwen-vl-max`）。
 
 ## 模拟检测：能不能收到题目
 
@@ -188,7 +189,7 @@ python run.py --mode dom --yes --duration 1800   # 自动作答，跑 30 分钟
 site: changjiang
 deepseek:
   provider: deepseek             # 换服务商只动这三项
-  model: deepseek-chat
+  model: deepseek-flash
   base_url: https://api.deepseek.com
 answer:
   mode: manual                   # manual / dom / api

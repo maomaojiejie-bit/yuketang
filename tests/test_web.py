@@ -419,3 +419,170 @@ def test_unknown_route_returns_404(tmp_dir: object) -> None:
         return response.status
 
     assert run(tmp_dir, action) == 404
+
+
+# --------------------------------------------------------------------------- #
+# 在控制台里改 API Key
+# --------------------------------------------------------------------------- #
+def test_apikey_writes_dotenv_and_takes_effect(tmp_dir: object) -> None:
+    """设置里填的 Key 要落进 .env，并立刻反映到状态上。"""
+    from cjsolver.envfile import read_env
+
+    async def action(client: TestClient) -> tuple[dict, dict, dict]:
+        saved = await (await client.post("/api/apikey", json={"key": "sk-test-1234567890"})).json()
+        providers = await (await client.get("/api/providers")).json()
+        state = await (await client.get("/api/state")).json()
+        return saved, providers, state
+
+    saved, providers, state = run(tmp_dir, action)
+
+    assert saved["ok"] is True
+    assert saved["env_name"] == "DEEPSEEK_API_KEY"
+    assert saved["configured"] is True
+
+    # 落在 .env 里，而不是会被提交的 console-settings.json
+    env = read_env(tmp_dir / ".env")  # type: ignore[operator]
+    assert env["DEEPSEEK_API_KEY"] == "sk-test-1234567890"
+    assert not (tmp_dir / "console-settings.json").exists()  # type: ignore[operator]
+
+    assert providers["key_configured"] is True
+    assert state["model"]["configured"] is True
+
+
+def test_apikey_response_is_masked(tmp_dir: object) -> None:
+    """真正的 Key 绝不能回给前端。"""
+    secret = "sk-0ab83962c1f24f5b94e91ee7f3b99aac"
+
+    async def action(client: TestClient) -> tuple[dict, dict, str]:
+        saved = await (await client.post("/api/apikey", json={"key": secret})).json()
+        providers = await (await client.get("/api/providers")).json()
+        state = await (await client.get("/api/state")).text()
+        return saved, providers, state
+
+    saved, providers, state_text = run(tmp_dir, action)
+
+    assert secret not in json.dumps(saved, ensure_ascii=False)
+    assert secret not in json.dumps(providers, ensure_ascii=False)
+    assert secret not in state_text
+    assert saved["masked"].startswith("sk-0ab")
+    assert providers["key_masked"] == saved["masked"]
+
+
+def test_apikey_uses_current_provider_env(tmp_dir: object) -> None:
+    """切到千问后，填的 Key 要写进 DASHSCOPE_API_KEY，而不是 DeepSeek 那个。"""
+    from cjsolver.envfile import read_env
+
+    async def action(client: TestClient) -> dict:
+        await client.post("/api/settings", json={"deepseek": {"provider": "qwen"}})
+        return await (await client.post("/api/apikey", json={"key": "sk-qwen-abcdef"})).json()
+
+    saved = run(tmp_dir, action)
+    assert saved["env_name"] == "DASHSCOPE_API_KEY"
+    assert saved["provider"] == "qwen"
+    env = read_env(tmp_dir / ".env")  # type: ignore[operator]
+    assert env["DASHSCOPE_API_KEY"] == "sk-qwen-abcdef"
+    assert "DEEPSEEK_API_KEY" not in env
+
+
+def test_apikey_can_be_cleared(tmp_dir: object) -> None:
+    from cjsolver.envfile import read_env
+
+    async def action(client: TestClient) -> tuple[dict, dict]:
+        await client.post("/api/apikey", json={"key": "sk-something-1234"})
+        cleared = await (await client.post("/api/apikey", json={"key": ""})).json()
+        providers = await (await client.get("/api/providers")).json()
+        return cleared, providers
+
+    cleared, providers = run(tmp_dir, action)
+    assert cleared["ok"] is True
+    assert cleared["configured"] is False
+    assert providers["key_configured"] is False
+    assert read_env(tmp_dir / ".env")["DEEPSEEK_API_KEY"] == ""  # type: ignore[operator]
+
+
+def test_apikey_rejects_whitespace(tmp_dir: object) -> None:
+    async def action(client: TestClient) -> tuple[int, dict]:
+        response = await client.post("/api/apikey", json={"key": "sk-a b c"})
+        return response.status, await response.json()
+
+    status, payload = run(tmp_dir, action)
+    assert status == 400
+    assert "空格" in payload["error"]
+
+
+def test_apikey_requires_key_field(tmp_dir: object) -> None:
+    async def action(client: TestClient) -> tuple[int, dict]:
+        response = await client.post("/api/apikey", json={"nope": 1})
+        return response.status, await response.json()
+
+    status, payload = run(tmp_dir, action)
+    assert status == 400
+    assert "key" in payload["error"]
+
+
+def test_apikey_preserves_other_env_lines(tmp_dir: object) -> None:
+    """别把用户 .env 里的其它配置冲掉。"""
+    from cjsolver.envfile import read_env
+
+    env_path = tmp_dir / ".env"  # type: ignore[operator]
+    env_path.write_text(
+        "# 我的注释\nDEEPSEEK_API_KEY=old\nCJ_SITE=pro\n", encoding="utf-8"
+    )
+
+    async def action(client: TestClient) -> None:
+        await client.post("/api/apikey", json={"key": "sk-new-value-9999"})
+
+    run(tmp_dir, action)
+    env = read_env(env_path)
+    assert env["DEEPSEEK_API_KEY"] == "sk-new-value-9999"
+    assert env["CJ_SITE"] == "pro"
+    assert "# 我的注释" in env_path.read_text(encoding="utf-8")
+
+
+def test_providers_reports_key_env_for_current(tmp_dir: object) -> None:
+    async def action(client: TestClient) -> dict:
+        return await (await client.get("/api/providers")).json()
+
+    payload = run(tmp_dir, action)
+    assert payload["key_env"] == "DEEPSEEK_API_KEY"
+    assert payload["key_masked"] == ""
+    assert payload["key_configured"] is False
+
+
+def test_console_page_has_apikey_input(tmp_dir: object) -> None:
+    async def action(client: TestClient) -> str:
+        return await (await client.get("/")).text()
+
+    html = run(tmp_dir, action)
+    assert 'id="api-key"' in html
+    assert 'id="btn-save-key"' in html
+    assert 'type="password"' in html      # 不能明文显示
+    assert "/api/apikey" in html
+    assert "saveApiKey" in html
+
+
+def test_set_api_key_updates_live_client(tmp_dir: object) -> None:
+    """改 Key 要让**已经在跑的**客户端跟着变，而不是等重启。"""
+
+    async def scenario() -> tuple[bool, str, bool, str]:
+        config = load_config(project_root=tmp_dir)  # type: ignore[arg-type]
+        runtime = ConsoleRuntime(config)
+        await runtime.start()
+        try:
+            created_late = runtime._client is None  # noqa: SLF001 - 起始没有 Key
+            await runtime.set_api_key("sk-fresh-1234567890")
+            client = runtime._client  # noqa: SLF001
+            first = client.config.api_key if client else ""
+            await runtime.set_api_key("sk-second-0987654321")
+            # 同一个客户端对象，没有被重建
+            same_object = runtime._client is client  # noqa: SLF001
+            second = runtime._client.config.api_key if runtime._client else ""  # noqa: SLF001
+            return created_late, first, same_object, second
+        finally:
+            await runtime.close()
+
+    created_late, first, same_object, second = asyncio.run(scenario())
+    assert created_late is True, "测试环境起始应当没有 Key"
+    assert first == "sk-fresh-1234567890"
+    assert same_object is True, "换 Key 不应该重建客户端（监听可能正在用它）"
+    assert second == "sk-second-0987654321"

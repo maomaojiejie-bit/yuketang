@@ -36,6 +36,28 @@ def chat_response(content: str) -> httpx.Response:
     )
 
 
+def test_update_config_hot_swaps_api_key() -> None:
+    """控制台改 Key 后，下一次请求必须带上新的 Authorization。
+
+    Key 不能写死在 httpx client 的默认头里，否则运行中改 Key 不会生效。
+    """
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.headers.get("authorization", ""))
+        return chat_response('{"answer": "A"}')
+
+    async def scenario() -> None:
+        transport = httpx.MockTransport(handler)
+        async with DeepSeekClient(config(api_key="sk-old"), transport=transport) as client:
+            await client.ask(make_problem())
+            client.update_config(config(api_key="sk-new"))
+            await client.ask(make_problem())
+
+    run(scenario())
+    assert seen == ["Bearer sk-old", "Bearer sk-new"]
+
+
 def run(coro: object) -> object:
     return asyncio.run(coro)  # type: ignore[arg-type]
 

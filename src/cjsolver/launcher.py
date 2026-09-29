@@ -15,6 +15,7 @@ from pathlib import Path
 
 from . import console
 from .config import Config, ConfigError
+from .envfile import upsert_env as _upsert_env
 
 MENU_ITEMS: list[tuple[str, str, str]] = [
     ("1", "打开网页控制台", "推荐。图形界面启停监听、跑模拟检测、看实时抓题"),
@@ -68,26 +69,8 @@ def _mask(value: str) -> str:
 # --------------------------------------------------------------------------- #
 # 配置写入
 # --------------------------------------------------------------------------- #
-def upsert_env(path: Path, values: dict[str, str]) -> None:
-    """更新 .env 中的若干键，保留其它行（含注释）。"""
-    lines: list[str] = []
-    if path.exists():
-        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-
-    remaining = dict(values)
-    output: list[str] = []
-    for line in lines:
-        match = re.match(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=", line)
-        if match and match.group(1) in remaining:
-            key = match.group(1)
-            output.append(f"{key}={remaining.pop(key)}")
-        else:
-            output.append(line)
-    for key, value in remaining.items():
-        output.append(f"{key}={value}")
-
-    text = "\n".join(output).strip("\n") + "\n"
-    path.write_text(text, encoding="utf-8")
+# upsert_env 现在住在 cjsolver.envfile（控制台改 Key 也要用同一份实现）
+upsert_env = _upsert_env
 
 
 def ensure_config_file(config: Config, *, site: str, mode: str) -> Path | None:

@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import logging
+import os
 from typing import Any
 
 from .. import console
@@ -85,7 +86,64 @@ class ConsoleRuntime:
         self.config = config
         path = settings.save(config, values)
         self.bus.log(f"设置已更新（保存到 {path.name}）")
+        # 换服务商后 Key 要重新解析，并把新配置推给已在跑的客户端
+        if self._client is not None:
+            self._client.update_config(self.config.deepseek)
         return settings.describe(config)
+
+    # -- API Key ----------------------------------------------------------
+    async def set_api_key(self, key: str) -> dict[str, Any]:
+        """把 API Key 写进 .env 并立即生效。
+
+        写 .env 而不是 console-settings.json，是因为后者**已被提交进仓库**，
+        密钥写进去等于推到 GitHub。
+        """
+        from ..envfile import mask_secret, upsert_env
+        from ..providers import key_env_hint, provider_by_id
+
+        provider = provider_by_id(self.config.deepseek.provider)
+        env_name = key_env_hint(provider)
+        cleaned = (key or "").strip()
+        if cleaned and any(char.isspace() for char in cleaned):
+            raise ConsoleError("API Key 里不应有空格或换行，请重新粘贴。")
+
+        env_path = self.config.project_root / ".env"
+        try:
+            upsert_env(env_path, {env_name: cleaned})
+        except OSError as exc:
+            raise ConsoleError(f"写入 {env_path.name} 失败：{exc}") from exc
+
+        # 同步进程环境，后续 apply_provider_key / 重启解析都拿得到
+        if cleaned:
+            os.environ[env_name] = cleaned
+        else:
+            os.environ.pop(env_name, None)
+
+        self.config = dataclasses.replace(
+            self.config,
+            deepseek=dataclasses.replace(self.config.deepseek, api_key=cleaned),
+        )
+
+        if cleaned:
+            if self._client is None:
+                self._client = DeepSeekClient(self.config.deepseek)
+                await self._client.__aenter__()
+            else:
+                self._client.update_config(self.config.deepseek)
+            self.bus.log(
+                f"{provider.label} 的 API Key 已更新（{mask_secret(cleaned)}），立即生效。"
+            )
+        else:
+            self.bus.log(f"已清空 {env_name}，模型相关功能暂时不可用。", level="warn")
+
+        return {
+            "env_name": env_name,
+            "provider": provider.id,
+            "provider_label": provider.label,
+            "configured": bool(cleaned),
+            "masked": mask_secret(cleaned),
+            "path": str(env_path),
+        }
 
     # -- 浏览器 -----------------------------------------------------------
     async def ensure_browser(self) -> AttachedBrowser:

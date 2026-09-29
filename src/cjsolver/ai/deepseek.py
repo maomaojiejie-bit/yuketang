@@ -39,13 +39,16 @@ class DeepSeekClient:
     async def __aenter__(self) -> "DeepSeekClient":
         self._client = httpx.AsyncClient(
             timeout=httpx.Timeout(self.config.timeout, connect=15.0),
-            headers={
-                "Authorization": f"Bearer {self.config.api_key.strip()}",
-                "Content-Type": "application/json",
-            },
+            # 这里**不放** Authorization：Key 可能被控制台在运行中改掉，
+            # 写死在 client 默认头里就不会生效。改为每次请求现取。
+            headers={"Content-Type": "application/json"},
             transport=self._transport,
         )
         return self
+
+    def update_config(self, config: DeepSeekConfig) -> None:
+        """热更新配置（换 Key / 换模型 / 换端点），无需重建客户端。"""
+        self.config = config
 
     async def __aexit__(self, *_exc: object) -> None:
         await self.aclose()
@@ -120,7 +123,11 @@ class DeepSeekClient:
             if attempt:
                 await asyncio.sleep(min(2.0 * attempt, 6.0))
             try:
-                response = await self.client.post(self.endpoint, json=payload)
+                response = await self.client.post(
+                    self.endpoint,
+                    json=payload,
+                    headers={"Authorization": f"Bearer {self.config.api_key.strip()}"},
+                )
             except httpx.HTTPError as exc:
                 last_error = AIError(f"请求 {self.endpoint} 失败：{exc}")
                 logger.warning("网络错误，准备重试（第 %s 次）：%s", attempt + 1, exc)
@@ -131,10 +138,13 @@ class DeepSeekClient:
 
             # 鉴权失败最常见的原因是 Key 被撤销或写错，给一句能直接照做的提示
             if response.status_code in (401, 403):
+                from ..providers import key_env_hint, provider_by_id
+
+                env_name = key_env_hint(provider_by_id(self.config.provider))
                 raise AIError(
-                    f"DeepSeek 鉴权失败（HTTP {response.status_code}）：API Key 无效或已失效。"
-                    "请在项目目录的 .env 里重新填写 DEEPSEEK_API_KEY，"
-                    "或到 platform.deepseek.com 生成一把新的。"
+                    f"鉴权失败（HTTP {response.status_code}）：API Key 无效或已失效。"
+                    f"可以打开控制台「设置 → 模型服务」重新填一把，"
+                    f"或直接改项目目录 .env 里的 {env_name}。"
                 )
 
             # 端点不支持 JSON 模式时降级重试一次

@@ -35,6 +35,7 @@ def create_app(runtime: ConsoleRuntime) -> web.Application:
             web.get("/api/settings", api_settings_get),
             web.post("/api/settings", api_settings_post),
             web.get("/api/providers", api_providers),
+            web.post("/api/apikey", api_apikey),
             web.get("/api/events", api_events),
             web.post("/api/watch/start", api_watch_start),
             web.post("/api/watch/stop", api_watch_stop),
@@ -108,18 +109,42 @@ async def api_settings_get(request: web.Request) -> web.Response:
 
 async def api_providers(request: web.Request) -> web.Response:
     """模型服务商预设，附当前服务商的 Key 是否已配置。"""
+    from ..envfile import mask_secret
+    from ..providers import key_env_hint, provider_by_id
+
     runtime = _runtime(request)
+    current = runtime.config.deepseek.provider
+    key = runtime.config.deepseek.api_key.strip()
     return _json(
         {
             "ok": True,
             "providers": providers.describe_all(),
-            "current": runtime.config.deepseek.provider,
+            "current": current,
             "model": runtime.config.deepseek.model,
             "base_url": runtime.config.deepseek.base_url,
-            "key_configured": bool(runtime.config.deepseek.api_key.strip()),
+            "key_configured": bool(key),
+            # 只回打码结果，真正的 Key 不出后端
+            "key_masked": mask_secret(key),
+            "key_env": key_env_hint(provider_by_id(current)),
             "generic_key_env": providers.GENERIC_KEY_ENV,
         }
     )
+
+
+async def api_apikey(request: web.Request) -> web.Response:
+    """设置当前服务商的 API Key（写进 .env）。"""
+    runtime = _runtime(request)
+    body = await _body(request)
+    if "key" not in body:
+        return _json({"ok": False, "error": "请求里缺少 key 字段。"}, status=400)
+    try:
+        result = await runtime.set_api_key(str(body.get("key") or ""))
+    except ConsoleError as exc:
+        return _json({"ok": False, "error": str(exc)}, status=400)
+    except Exception as exc:  # pragma: no cover - 防御性
+        logger.exception("写入 API Key 失败")
+        return _json({"ok": False, "error": f"{type(exc).__name__}: {exc}"}, status=500)
+    return _json({"ok": True, **result})
 
 
 async def api_settings_post(request: web.Request) -> web.Response:

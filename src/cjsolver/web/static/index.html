@@ -273,6 +273,13 @@
       <label class="field">Base URL
         <input type="text" id="base-url" placeholder="https://…/v1">
       </label>
+      <label class="field">API Key
+        <div class="row" style="gap:8px;flex-wrap:nowrap">
+          <input type="password" id="api-key" autocomplete="off" spellcheck="false"
+                 placeholder="粘贴新 Key 后点保存">
+          <button class="ghost" id="btn-save-key" type="button">保存</button>
+        </div>
+      </label>
       <div class="hint" id="provider-hint"></div>
       <div class="hint" id="provider-note"></div>
     </div>
@@ -792,7 +799,7 @@ const settingsState = {
 
 // 服务商预设，由 /api/providers 填充
 let providerList = [];
-let providerMeta = { key_configured: false, generic_key_env: 'AI_API_KEY' };
+let providerMeta = { key_configured: false, key_masked: '', key_env: '', generic_key_env: 'AI_API_KEY' };
 
 const MODE_TEXT = {
   manual: 'manual 只提示',
@@ -822,10 +829,14 @@ function renderProviderControls() {
 
   const keyEnv = (provider && provider.key_env) || providerMeta.generic_key_env;
   const ok = providerMeta.key_configured;
+  const masked = providerMeta.key_masked;
   $('provider-hint').innerHTML = ok
-    ? `Key 状态：<span style="color:var(--ok)">已配置</span>（来自 .env，服务商专属变量 <code>${esc(keyEnv)}</code>）`
-    : `Key 状态：<span style="color:var(--warn)">未配置</span> —— 请在项目目录的 <code>.env</code> 里填写 <code>${esc(keyEnv)}</code>`
-      + `（或通用的 <code>${esc(providerMeta.generic_key_env)}</code>），改完重启控制台`;
+    ? `Key 状态：<span style="color:var(--ok)">已配置</span>`
+      + ` <code>${esc(masked)}</code>`
+      + `（<code>.env</code> 里的 <code>${esc(providerMeta.key_env || keyEnv)}</code>）`
+    : `Key 状态：<span style="color:var(--warn)">未配置</span> —— 在上面粘一把，`
+      + `或改项目目录 <code>.env</code> 里的 <code>${esc(keyEnv)}</code>`
+      + `（或通用的 <code>${esc(providerMeta.generic_key_env)}</code>）`;
   const notes = [];
   if (provider && provider.note) notes.push(esc(provider.note));
   if (provider && provider.docs) {
@@ -834,12 +845,49 @@ function renderProviderControls() {
   $('provider-note').innerHTML = notes.join(' · ');
 }
 
+/** 保存 API Key：写进 .env 并立即生效，前端只拿到打码结果 */
+async function saveApiKey() {
+  const input = $('api-key');
+  const button = $('btn-save-key');
+  const key = input.value.trim();
+  if (!key && !providerMeta.key_configured) {
+    toast('请先粘贴 API Key');
+    return;
+  }
+  if (!key) {
+    if (!confirm('清空当前 API Key？清空后模型相关功能不可用。')) return;
+  }
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = '保存中…';
+  try {
+    const result = await api('/api/apikey', { key });
+    if (!result.ok) {
+      toast(result.error || '保存失败');
+      return;
+    }
+    input.value = '';
+    toast(
+      key
+        ? `${result.provider_label} 的 Key 已保存到 .env（${result.masked}），立即生效`
+        : `已清空 ${result.env_name}`,
+      'info'
+    );
+    await loadProviders();
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
+}
+
 async function loadProviders() {
   const result = await api('/api/providers');
   if (!result.ok) return;
   providerList = result.providers || [];
   providerMeta = {
     key_configured: !!result.key_configured,
+    key_masked: result.key_masked || '',
+    key_env: result.key_env || '',
     generic_key_env: result.generic_key_env || 'AI_API_KEY'
   };
   settingsState.provider = result.current || 'deepseek';
@@ -847,6 +895,9 @@ async function loadProviders() {
   settingsState.base_url = result.base_url || '';
   $('model').value = settingsState.model;
   $('base-url').value = settingsState.base_url;
+  $('api-key').placeholder = result.key_configured
+    ? `已配置 ${result.key_masked}，粘贴新 Key 可替换`
+    : '粘贴 API Key 后点保存';
   renderProviderControls();
 }
 
@@ -859,6 +910,14 @@ $('provider').addEventListener('change', () => {
   if (provider.models && provider.models.length) $('model').value = provider.models[0];
   renderProviderControls();
   saveSettings({ quiet: true });
+});
+
+$('btn-save-key').addEventListener('click', saveApiKey);
+$('api-key').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    saveApiKey();
+  }
 });
 
 $('model').addEventListener('change', () => saveSettings({ quiet: true }));
